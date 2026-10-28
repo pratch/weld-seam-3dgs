@@ -1,0 +1,47 @@
+# ── Raw data & large inputs (bags, videos, download links) ──
+data/
+
+# ── Containers ──
+*.sif
+
+# ── Preprocessing outputs (images, odometry, registered clouds) ──
+preprocess/output/
+
+# ── Experiment outputs: keep README / scripts / configs, drop generated artefacts ──
+experiments/*/results_*/
+experiments/*/sparse/
+experiments/*/images
+experiments/*/comparisons/
+experiments/*/logs/
+
+# ── Large binary formats ──
+*.pt
+*.pth
+*.ckpt
+*.ply
+*.splat
+*.ksplat
+*.pcd
+*.db3
+*.bag
+*.mcap
+*.mp4
+*.mov
+
+# ── Visualizer symlinks into data / experiment outputs (regenerate locally) ──
+**/gt_images
+**/baseline_renders
+**/bilateral_renders
+
+# ── Unrelated course material (separate upstream repo) ──
+homework/
+
+# ── Python / Node / editor / OS ──
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+node_modules/
+.venv/
+.vscode/
+.idea/
+.DS_Store

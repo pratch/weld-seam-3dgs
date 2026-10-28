@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HERO 2.1 Inspection 3D Visualizer & Comparison</title>
+    <link rel="stylesheet" href="style.css?v=3">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+            "@mkkellogg/gaussian-splats-3d": "./libs/gaussian-splats-3d.module.js?v=2"
+        }
+    }
+    </script>
+</head>
+<body>
+    <div id="app-container">
+        <!-- Header Toolbar -->
+        <header id="main-header">
+            <div class="logo-group">
+                <span class="badge-status">HERO 2.1</span>
+                <h1>Weld Seam 3D Inspection Visualizer</h1>
+                <span class="sub-tag">Zero-COLMAP FAST-LIO2 & 3DGS</span>
+            </div>
+
+            <!-- Global Camera & Playback Bar -->
+            <div class="playback-controls">
+                <button id="btn-prev" title="Previous Frame (Left Arrow)">◀</button>
+                <button id="btn-play" title="Play/Pause Crawl">▶ Play</button>
+                <button id="btn-next" title="Next Frame (Right Arrow)">▶</button>
+                <div class="frame-selector-wrapper">
+                    <label for="camera-select">Camera Frame:</label>
+                    <select id="camera-select">
+                        <option value="">Loading camera poses...</option>
+                    </select>
+                </div>
+                <button id="btn-snap" class="btn-highlight" title="Align 3D Viewport to Exact Camera Pose">🎥 Snap to View</button>
+                <button id="btn-reset-view" class="btn-secondary" title="Reset Viewport to Orbit Overview">Reset Orbit</button>
+                <a href="cameras.json" download="cameras.json" class="btn-secondary" style="text-decoration:none; display:inline-flex; align-items:center; gap:4px; font-size:12px;" title="Download cameras.json for PlayCanvas SuperSplat editor">📥 SuperSplat Cameras</a>
+            </div>
+        </header>
+
+        <!-- Main Body: 3D Viewport + Inspection Split Screen -->
+        <main id="content-layout">
+            <!-- 3D Three.js Viewport (Trajectory, Camera Frustums, Plate) -->
+            <section id="viewport-container">
+                <div id="threejs-canvas-wrapper"></div>
+                
+                <!-- Floating Viewport Overlay Controls -->
+                <div class="viewport-overlay">
+                    <div class="overlay-card glassmorphism">
+                        <h3>3D Scene Layers</h3>
+                        <label class="toggle-control">
+                            <input type="checkbox" id="toggle-splats" checked>
+                            <span class="toggle-slider"></span>
+                            <span class="toggle-label" id="splats-label">✨ 3D Gaussian Splats</span>
+                        </label>
+                        <div class="splat-controls-sub" id="splat-sub-controls">
+                            <div class="sub-control-row">
+                                <label for="splat-model-select">Model:</label>
+                                <select id="splat-model-select">
+                                    <option value="model.splat" selected>Illumination-Aware (212k)</option>
+                                    <option value="baseline.splat">Baseline 3DGS (276k)</option>
+                                </select>
+                            </div>
+                            <div class="sub-control-row">
+                                <label for="splat-size-slider">Radius:</label>
+                                <input type="range" id="splat-size-slider" min="0.003" max="0.04" step="0.001" value="0.012">
+                                <span id="splat-size-val">0.012</span>
+                            </div>
+                        </div>
+                        <label class="toggle-control">
+                            <input type="checkbox" id="toggle-frustums" checked>
+                            <span class="toggle-slider"></span>
+                            <span class="toggle-label">Camera Frustums (989)</span>
+                        </label>
+                        <label class="toggle-control">
+                            <input type="checkbox" id="toggle-trajectory" checked>
+                            <span class="toggle-slider"></span>
+                            <span class="toggle-label">Trajectory Path (7.68 m)</span>
+                        </label>
+                        <label class="toggle-control">
+                            <input type="checkbox" id="toggle-plate" checked>
+                            <span class="toggle-slider"></span>
+                            <span class="toggle-label">Vessel Plate Guide</span>
+                        </label>
+                        <div class="scene-legend">
+                            <div><span class="dot val-dot"></span> Validation Cams (Held-out)</div>
+                            <div><span class="dot train-dot"></span> Training Cams</div>
+                            <div><span class="dot active-dot"></span> Current Robot Camera</div>
+                            <div>⌨ WASD move · Q/E down/up · Shift fast</div>
+                        </div>
+                    </div>
+
+                    <div class="overlay-card glassmorphism telemetry-card">
+                        <h3>Camera 6-DoF Telemetry</h3>
+                        <div class="telemetry-grid">
+                            <div class="tel-item"><span class="tel-label">Frame ID</span><span id="tel-id">#0</span></div>
+                            <div class="tel-item"><span class="tel-label">Timestamp</span><span id="tel-time">0.00 s</span></div>
+                            <div class="tel-item"><span class="tel-label">Position X</span><span id="tel-x">+0.000 m</span></div>
+                            <div class="tel-item"><span class="tel-label">Position Y</span><span id="tel-y">+0.000 m</span></div>
+                            <div class="tel-item"><span class="tel-label">Position Z</span><span id="tel-z">+0.000 m</span></div>
+                            <div class="tel-item"><span class="tel-label">Distance to Plate</span><span id="tel-dist">~15.2 cm</span></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Timeline Scrub Bar at Bottom of 3D View -->
+                <div class="timeline-bar glassmorphism">
+                    <span id="time-current">Frame 0</span>
+                    <input type="range" id="timeline-slider" min="0" max="988" value="0">
+                    <span id="time-total">Frame 988</span>
+                </div>
+            </section>
+
+            <!-- Right-Hand Comparison Panel (GT vs Baseline 3DGS vs Illumination-Aware 3DGS) -->
+            <aside id="comparison-panel" class="glassmorphism">
+                <div class="panel-header">
+                    <h2>Inspection & Render Comparison</h2>
+                    <div class="view-mode-tabs">
+                        <button class="tab-btn active" data-mode="split">Split Slider</button>
+                        <button class="tab-btn" data-mode="side">Side-by-Side</button>
+                    </div>
+                </div>
+
+                <!-- Comparison Method Selectors -->
+                <div class="method-toggles">
+                    <div class="method-badge gt-badge">Ground Truth RGB</div>
+                    <div class="vs-text">vs</div>
+                    <select id="compare-method-select">
+                        <option value="baseline">Baseline 3DGS (Static SH Washout)</option>
+                        <option value="bilateral" selected>Illumination-Aware 3DGS (Bilateral Grid)</option>
+                    </select>
+                </div>
+
+                <!-- Comparison Viewer Box -->
+                <div id="image-compare-container">
+                    <!-- Split Curtain View -->
+                    <div id="split-curtain-view" class="compare-view active">
+                        <div class="curtain-wrapper">
+                            <img id="img-rendered" class="curtain-base" src="" alt="Rendered Splat">
+                            <div class="curtain-overlay-container" id="curtain-container">
+                                <img id="img-gt" class="curtain-overlay" src="" alt="Ground Truth">
+                            </div>
+                            <div class="curtain-handle" id="curtain-handle">
+                                <div class="handle-line"></div>
+                                <div class="handle-circle">↔</div>
+                            </div>
+                        </div>
+                        <div class="curtain-labels">
+                            <span class="label-left">◀ Ground Truth (RealSense D405)</span>
+                            <span class="label-right">3DGS Synthesized Novel View ▶</span>
+                        </div>
+                    </div>
+
+                    <!-- Side-by-Side View -->
+                    <div id="side-by-side-view" class="compare-view">
+                        <div class="side-col">
+                            <div class="col-title">Ground Truth RGB</div>
+                            <div class="img-frame"><img id="img-side-gt" src="" alt="GT"></div>
+                        </div>
+                        <div class="side-col">
+                            <div class="col-title" id="side-render-title">Baseline 3DGS</div>
+                            <div class="img-frame"><img id="img-side-render" src="" alt="Render"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Analysis & Metrics Breakdown -->
+                <div class="diagnostics-card">
+                    <h3>Weld Defect & Surface Diagnostics</h3>
+                    <div class="metrics-row">
+                        <div class="metric-pill">
+                            <span class="mp-label">PSNR</span>
+                            <span class="mp-val" id="metric-psnr">22.02 dB</span>
+                        </div>
+                        <div class="metric-pill">
+                            <span class="mp-label">SSIM</span>
+                            <span class="mp-val" id="metric-ssim">0.799</span>
+                        </div>
+                        <div class="metric-pill">
+                            <span class="mp-label">Render Latency</span>
+                            <span class="mp-val" id="metric-fps">2.5 ms (400 FPS)</span>
+                        </div>
+                    </div>
+                    <div class="insight-box" id="insight-text">
+                        <strong>Specular Flashlight Analysis:</strong> Move the curtain slider to observe how standard 3DGS averages out moving specular reflections into a diffuse blur, while bilateral grid compensation reconstructs crisp rust textures and weld grinding marks.
+                    </div>
+                </div>
+            </aside>
+        </main>
+    </div>
+
+    <script type="module" src="app.js?v=5"></script>
+</body>
+</html>

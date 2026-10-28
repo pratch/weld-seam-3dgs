@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  fast_lio2:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: hero_fast_lio2:humble
+    container_name: hero_fast_lio2
+    network_mode: host
+    ipc: host
+    privileged: true
+    volumes:
+      - ../..:/workspace
+    working_dir: /workspace
+    command: bash
