@@ -52,7 +52,52 @@ Evaluated on 124 held-out test frames across the longitudinal weld trajectory:
 3. **Efficiency:**
    * Training took only **6.3 minutes** with **0.46 GB VRAM**, rendering at **400 FPS**.
 
-## 7. Next Step: 2D Gaussian Splatting (2DGS)
+## 7. Known Issue: Camera-to-Body Extrinsic Is Missing (Poses Are IMU Poses)
+
+**Status:** open, affects this experiment and `20261028_illumination_bilateral_webvis` (identical poses in `sparse/0/images.bin`).
+
+### What the pipeline does
+3DGS needs each image's camera pose (c2w). The correct chain is
+
+$$T^W_c = T^W_b \cdot T^b_c$$
+
+where $T^W_b$ (body→world) comes from FAST-LIO2 and $T^b_c$ (camera→body) is the fixed D405 mounting. `preprocess/scripts/align_poses_to_3dgs.py` defaults `t_cam_body=(0,0,0)`, `q_cam_body=(0,0,0,1)` and `run_fast_lio_offline.sh` never overrides them, so every `transform_matrix` in `transforms.json` is just the **interpolated Mid-360 IMU pose** relabelled as the camera (OpenCV axes, metric `camera_init` world frame). Poses are then frozen during training (`pose_opt: false` in `results_full/cfg.yml`).
+
+### Evidence
+| Check | Result |
+| :--- | :--- |
+| Frame 0 rebuilt from `odometry.csv` with zero extrinsic | Matches `transforms.json` exactly |
+| `/tf_static` in any of the 12 bags | None |
+| `/tf` in bags (longdefect1, cir1, long1) | Only `camera_init → camera_link`, exact identity in every message (placeholder, not a calibration) |
+| URDF / calibration files in `data/` | None; no colour `camera_info` either (intrinsics are hardcoded defaults) |
+| IROS paper, Module 2 (Eq. 8) | $(R^b_c, t^b_c)$ "determined from rigid mechanical mounting geometry", $R^b_c \approx I$ (< 2°); **no value given for $t^b_c$** |
+| FAST-LIO map projected into cameras 0 / 400 / 800 | Plate normal ≈ camera optical axis (rotation plausible; roll about the axis unverified), but plate sits **~1–5 cm** from the assumed centre vs. the D405's real ~8–10 cm standoff |
+
+### Why a *fixed* wrong extrinsic still hurts
+The extrinsic multiplies on the right, so it does not cancel in relative poses: $(T_i X)^{-1}(T_j X) = X^{-1}(T_i^{-1}T_j)X$.
+* Missing translation $t$ produces a camera-centre error $\approx \Delta\theta \times |t|$; it cancels only while the robot purely translates.
+* A rotation error $R$ tilts the camera-frame motion direction even in pure translation.
+
+Measured on this trajectory (frames whose centres are within 12 cm, i.e. overlapping views), body orientation differs by **9–11°** (forward/return passes; whole run rotates 10.2°):
+
+| Error source | Inconsistency between overlapping views |
+| :--- | :--- |
+| Missing $t$ = 3 cm | ~5 mm |
+| Missing $t$ = 5 cm | ~8–10 mm |
+| Missing $t$ = 10 cm | ~16–19 mm |
+| 2° rotation error (paper tolerance) | ~4 mm |
+
+At 0.10 m standoff one pixel ≈ **0.26 mm**, so 8 mm ≈ 30 px of misregistration. With frozen poses this shows up as blur, duplicated texture and floaters, and is a plausible cause of the ~22 dB PSNR plateau. Note the 9–11° also contains FAST-LIO inter-pass drift (paper: 13.6 mm global MAE), a separate error of similar size.
+
+### Fix plan
+1. **Re-train with `pose_opt: true`** (gsplat `CameraOptModule`): cheapest test of how much quality is lost to pose error; absorbs both extrinsic and drift.
+2. **Obtain $T^b_c$**: ask the paper authors for the value used in their seam-fusion code / bracket CAD, or measure IMU origin → D405 optical centre on the robot. Pass it as `t_cam_body` / `q_cam_body` in `align_poses_to_3dgs.py`.
+3. **Estimate from data** if neither is available: offset along the optical axis = D405 depth to plate − IMU-to-plate distance in the FAST-LIO map; in-plane offset via pose refinement or hand-eye calibration.
+4. Check camera/LiDAR time offset (`time_sync_en: false` assumes zero).
+
+---
+
+## 8. Next Step: 2D Gaussian Splatting (2DGS)
 * While 3DGS produces high-fidelity novel view rendering, standard 3D ellipsoidal Gaussians have ambiguities in normal estimation along thin surfaces.
 * **Next Action:** Train 2DGS (`simple_trainer_2dgs.py`) on this exact COLMAP dataset to constrain Gaussians to planar surfels, directly yielding high-resolution surface normals for weld defect geometry extraction.
 
